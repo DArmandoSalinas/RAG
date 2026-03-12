@@ -1,5 +1,5 @@
 """
-Streamlit frontend — Apple-inspired RAG UI.
+Streamlit frontend — Personal Research Assistant (conversation-first UI).
 Run from project root: streamlit run frontend/app.py
 """
 
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import os
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -14,198 +15,201 @@ import streamlit as st
 
 API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
+PRODUCT_NAME = "Personal Research Assistant"
+TAGLINE = "Your private researcher — reads your PDFs, cites sources, answers like a conversation."
+
 st.set_page_config(
-    page_title="RAG — Research",
-    page_icon="◉",
+    page_title=f"{PRODUCT_NAME}",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={"Get help": None, "Report a bug": None, "About": None},
 )
 
-# --- Design tokens (Apple dark palette + accent) ---
 CSS = """
 <style>
     :root {
         --bg-deep: #0a0a0b;
-        --bg-elevated: rgba(28, 28, 30, 0.72);
-        --bg-glass: rgba(44, 44, 46, 0.45);
+        --bg-elevated: rgba(28, 28, 30, 0.85);
+        --bg-glass: rgba(44, 44, 46, 0.5);
         --border-subtle: rgba(255, 255, 255, 0.06);
-        --border-strong: rgba(255, 255, 255, 0.10);
+        --border-strong: rgba(255, 255, 255, 0.12);
         --text-primary: #f5f5f7;
         --text-secondary: #a1a1a6;
         --text-tertiary: #636366;
         --accent: #0a84ff;
-        --accent-soft: rgba(10, 132, 255, 0.15);
+        --accent-soft: rgba(10, 132, 255, 0.18);
         --success: #30d158;
         --danger: #ff453a;
         --radius-lg: 20px;
         --radius-pill: 980px;
-        --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.4);
+        --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.45);
     }
 
-    /* App shell */
     .stApp {
         background: var(--bg-deep) !important;
         background-image:
-            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(10, 132, 255, 0.12), transparent),
-            radial-gradient(ellipse 60% 40% at 100% 50%, rgba(88, 86, 214, 0.06), transparent) !important;
+            radial-gradient(ellipse 90% 60% at 50% -15%, rgba(10, 132, 255, 0.14), transparent),
+            radial-gradient(ellipse 50% 35% at 90% 80%, rgba(175, 82, 222, 0.08), transparent) !important;
         color: var(--text-primary);
     }
-    [data-testid="stAppViewContainer"] > .main {
-        padding-top: 1.5rem;
-    }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
+    [data-testid="stAppViewContainer"] > .main { padding-top: 1rem; }
+    #MainMenu, footer { visibility: hidden; }
+    header[data-testid="stHeader"] { background: transparent !important; }
 
-    /* Sidebar — glass panel */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(22, 22, 24, 0.95) 0%, rgba(14, 14, 15, 0.98) 100%) !important;
+        background: linear-gradient(195deg, rgba(24, 24, 26, 0.96) 0%, rgba(12, 12, 14, 0.99) 100%) !important;
         border-right: 1px solid var(--border-subtle) !important;
     }
-    [data-testid="stSidebar"] .block-container {
-        padding-top: 1.25rem;
-    }
 
-    /* Typography */
     html, body, .stMarkdown, [class*="css"] {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif !important;
         -webkit-font-smoothing: antialiased;
     }
 
-    /* Headings */
-    h1, h2, h3 {
-        font-weight: 600;
-        letter-spacing: -0.03em;
-        color: var(--text-primary) !important;
-    }
-
-    /* Primary button — capsule */
-    .stButton > button[kind="primary"],
     .stButton > button {
         background: var(--accent) !important;
         color: #fff !important;
         border: none !important;
         border-radius: var(--radius-pill) !important;
-        font-weight: 590 !important;
-        font-size: 0.9rem !important;
-        padding: 0.55rem 1.35rem !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-        box-shadow: 0 2px 12px rgba(10, 132, 255, 0.35);
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        padding: 0.5rem 1.2rem !important;
+        transition: transform 0.15s ease, box-shadow 0.15s !important;
     }
-    .stButton > button:hover {
-        background: #409cff !important;
-        transform: scale(1.02);
+    .stButton > button:hover { transform: scale(1.02); background: #409cff !important; }
+    [data-testid="stSidebar"] .stButton > button { width: 100%; }
+
+    /* Secondary outline button */
+    div[data-testid="column"] .stButton > button[kind="secondary"],
+    .btn-refresh button {
+        background: transparent !important;
+        border: 1px solid var(--border-strong) !important;
+        color: var(--text-primary) !important;
+        box-shadow: none !important;
     }
 
-    /* Secondary / sidebar buttons */
-    [data-testid="stSidebar"] .stButton > button {
-        width: 100%;
-        box-shadow: none;
-    }
-
-    /* File uploader — drop zone */
     [data-testid="stFileUploader"] section {
         background: var(--bg-glass) !important;
         border: 1px dashed var(--border-strong) !important;
         border-radius: var(--radius-lg) !important;
         padding: 1rem !important;
-        transition: border-color 0.2s, background 0.2s;
     }
     [data-testid="stFileUploader"] section:hover {
-        border-color: rgba(10, 132, 255, 0.4) !important;
+        border-color: rgba(10, 132, 255, 0.45) !important;
         background: var(--accent-soft) !important;
     }
 
-    /* Chat input area */
-    [data-testid="stChatInput"] {
-        border-radius: var(--radius-lg) !important;
-    }
     [data-testid="stChatInput"] textarea {
         background: var(--bg-elevated) !important;
         border: 1px solid var(--border-subtle) !important;
         color: var(--text-primary) !important;
+        border-radius: 16px !important;
     }
 
-    /* Alerts */
-    .stSuccess, div[data-testid="stSuccess"] {
-        background: rgba(48, 209, 88, 0.12) !important;
-        border: 1px solid rgba(48, 209, 88, 0.25) !important;
-        border-radius: 12px !important;
-    }
-    .stError {
-        border-radius: 12px !important;
-    }
-
-    /* Expander — source drawer */
     .streamlit-expanderHeader {
         background: var(--bg-glass) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: 14px !important;
-        font-weight: 500 !important;
-    }
-    [data-testid="stExpander"] {
-        border: none !important;
-        background: transparent !important;
     }
 
-    /* Custom blocks */
-    .hero-title {
-        font-size: 1.75rem;
+    /* —— Brand hero —— */
+    .brand-badge {
+        display: inline-block;
+        font-size: 0.65rem;
         font-weight: 700;
-        letter-spacing: -0.04em;
-        margin-bottom: 0.25rem;
-        background: linear-gradient(180deg, #fff 0%, #a1a1a6 100%);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: var(--accent-soft);
+        padding: 5px 12px;
+        border-radius: var(--radius-pill);
+        margin-bottom: 10px;
+        border: 1px solid rgba(10, 132, 255, 0.25);
+    }
+    .brand-title {
+        font-size: 1.85rem;
+        font-weight: 750;
+        letter-spacing: -0.045em;
+        line-height: 1.15;
+        margin: 0 0 8px 0;
+        background: linear-gradient(180deg, #ffffff 0%, #c7c7cc 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
-    .hero-sub {
+    .brand-tagline {
         color: var(--text-secondary);
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        max-width: 520px;
+        margin-bottom: 0;
     }
-    .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: var(--radius-pill);
-        font-size: 0.75rem;
-        font-weight: 500;
-        background: var(--bg-glass);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-secondary);
-    }
-    .status-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--text-tertiary);
-    }
-    .status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
-    .status-dot.bad { background: var(--danger); }
 
+    .thread-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+    .thread-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        letter-spacing: 0.04em;
+    }
+    .thread-meta {
+        font-size: 0.75rem;
+        color: var(--text-tertiary);
+    }
+
+    /* —— Messages —— */
     .msg-row {
         display: flex;
-        margin-bottom: 14px;
-        animation: fadeIn 0.25s ease;
+        margin-bottom: 16px;
+        align-items: flex-start;
+        gap: 12px;
+        animation: fadeIn 0.28s ease;
     }
-    .msg-row.user { justify-content: flex-end; }
-    .msg-row.assistant { justify-content: flex-start; }
+    .msg-row.user { flex-direction: row-reverse; }
+    .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+    .avatar.user {
+        background: linear-gradient(145deg, #48484a, #3a3a3c);
+        border: 1px solid var(--border-subtle);
+        color: #e8e8ed;
+    }
+    .avatar.assistant {
+        background: linear-gradient(145deg, rgba(10,132,255,0.35), rgba(10,132,255,0.12));
+        border: 1px solid rgba(10, 132, 255, 0.35);
+        color: #fff;
+    }
+    .bubble-wrap { max-width: calc(100% - 48px); flex: 1; }
+    .msg-row.user .bubble-wrap { display: flex; justify-content: flex-end; }
     .bubble {
-        max-width: 78%;
+        max-width: 85%;
         padding: 14px 18px;
-        border-radius: 22px;
-        line-height: 1.5;
-        font-size: 0.95rem;
+        border-radius: 20px;
+        line-height: 1.55;
+        font-size: 0.94rem;
         white-space: pre-wrap;
         word-break: break-word;
     }
     .bubble.user {
-        background: linear-gradient(145deg, #3a3a3c 0%, #2c2c2e 100%);
+        background: linear-gradient(160deg, #3a3a3c 0%, #2c2c2e 100%);
         border: 1px solid var(--border-subtle);
         color: var(--text-primary);
         border-bottom-right-radius: 6px;
@@ -218,27 +222,39 @@ CSS = """
         box-shadow: var(--shadow-soft);
     }
     .bubble-label {
-        font-size: 0.65rem;
+        font-size: 0.62rem;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         color: var(--text-tertiary);
-        margin-bottom: 6px;
-        font-weight: 600;
+        margin-bottom: 8px;
+        font-weight: 700;
     }
+
+    .welcome-bubble {
+        border-left: 3px solid var(--accent);
+        padding-left: 14px;
+        margin-bottom: 18px;
+    }
+    .welcome-bubble p {
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        line-height: 1.55;
+        margin: 0;
+    }
+    .welcome-bubble strong { color: var(--text-primary); }
 
     .empty-state {
         text-align: center;
-        padding: 3rem 2rem;
+        padding: 2.5rem 1.5rem;
         color: var(--text-secondary);
         border: 1px dashed var(--border-subtle);
         border-radius: var(--radius-lg);
-        margin: 2rem 0;
         background: var(--bg-glass);
     }
     .empty-state h3 {
         color: var(--text-primary);
-        font-size: 1.1rem;
-        margin-bottom: 0.5rem;
+        font-size: 1.05rem;
+        margin-bottom: 8px;
     }
 
     .source-card {
@@ -249,37 +265,38 @@ CSS = """
         margin-bottom: 12px;
         border-left: 3px solid var(--accent);
     }
-    .source-card-meta {
-        font-size: 0.7rem;
-        color: var(--text-tertiary);
-        margin-bottom: 8px;
-        font-weight: 500;
-    }
-    .source-card-body {
-        font-size: 0.88rem;
-        color: var(--text-secondary);
-        line-height: 1.45;
-    }
+    .source-card-meta { font-size: 0.7rem; color: var(--text-tertiary); margin-bottom: 6px; }
+    .source-card-body { font-size: 0.87rem; color: var(--text-secondary); line-height: 1.45; }
 
     .sidebar-brand {
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.12em;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--text-tertiary);
-        margin-bottom: 1rem;
+        margin-bottom: 8px;
     }
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 11px;
+        border-radius: var(--radius-pill);
+        font-size: 0.72rem;
+        font-weight: 600;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-secondary);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
+    .status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .status-dot.bad { background: var(--danger); }
 
     @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(6px); }
+        from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Divider subtle */
-    hr, [data-testid="stSidebar"] hr {
-        border-color: var(--border-subtle) !important;
-        margin: 1.25rem 0;
-    }
+    hr, [data-testid="stSidebar"] hr { border-color: var(--border-subtle) !important; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -314,108 +331,151 @@ def query_api(question: str) -> dict[str, Any]:
     return r.json()
 
 
+def _new_conversation() -> None:
+    st.session_state.messages = []
+    st.session_state.last_sources = []
+    st.session_state.thread_id = (st.session_state.get("thread_id") or 0) + 1
+    st.session_state.thread_started = datetime.now().strftime("%b %d, %Y · %H:%M")
+
+
 def main() -> None:
-    # --- Sidebar ---
-    api_ok = _health()
-    st.sidebar.markdown('<p class="sidebar-brand">Library</p>', unsafe_allow_html=True)
-    st.sidebar.markdown(
-        f'<span class="status-pill"><span class="status-dot {"ok" if api_ok else "bad"}"></span>'
-        f'{"Connected" if api_ok else "Offline"} · {html.escape(API_BASE)}</span>',
-        unsafe_allow_html=True,
-    )
-    st.sidebar.markdown("")  # spacer
-
-    st.sidebar.markdown("**Add knowledge**")
-    st.sidebar.caption("PDF only · chunks 1000 / overlap 100")
-    uploaded = st.sidebar.file_uploader(
-        "Drop PDF",
-        type=["pdf"],
-        label_visibility="collapsed",
-        help="Upload a PDF to embed and query with RAG.",
-    )
-
-    if uploaded is not None:
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            if st.button("Index", use_container_width=True, type="primary"):
-                with st.sidebar.status("Embedding…", expanded=True) as status:
-                    try:
-                        data = upload_pdf(uploaded.getvalue(), uploaded.name)
-                        n = data.get("chunks_indexed", 0)
-                        status.update(label=f"Indexed · {n} chunks", state="complete")
-                        st.session_state["last_index_count"] = n
-                        st.session_state["last_index_name"] = uploaded.name
-                        st.sidebar.success(f"**{uploaded.name}** is ready to query.")
-                    except httpx.HTTPStatusError as e:
-                        status.update(label="Failed", state="error")
-                        st.sidebar.error(e.response.text or str(e))
-                    except Exception as e:
-                        status.update(label="Failed", state="error")
-                        st.sidebar.error(str(e))
-        with col2:
-            if st.button("Clear chat", use_container_width=True):
-                st.session_state.messages = []
-                st.session_state.last_sources = []
-                st.rerun()
-
-    if st.session_state.get("last_index_name"):
-        st.sidebar.info(
-            f"Last indexed: **{st.session_state['last_index_name']}** "
-            f"({st.session_state.get('last_index_count', '?')} chunks)"
-        )
-
-    st.sidebar.divider()
-    st.sidebar.caption("MultiQueryRetriever · ChromaDB · GPT-4o")
-
-    # --- Main ---
-    st.markdown('<p class="hero-title">Research Assistant</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="hero-sub">Ask in natural language — answers are grounded in your PDFs.</p>',
-        unsafe_allow_html=True,
-    )
-
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "last_sources" not in st.session_state:
         st.session_state.last_sources = []
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = 1
+        st.session_state.thread_started = datetime.now().strftime("%b %d, %Y · %H:%M")
 
-    if not st.session_state.messages and not uploaded:
-        st.markdown(
-            """
-            <div class="empty-state">
-                <h3>No conversation yet</h3>
-                <p>Index a PDF in the sidebar, then ask anything about it.<br/>
-                Answers include retrievable source snippets.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    api_ok = _health()
+
+    # —— Sidebar ——
+    st.sidebar.markdown('<p class="sidebar-brand">Your library</p>', unsafe_allow_html=True)
+    st.sidebar.markdown(
+        f'<span class="status-pill"><span class="status-dot {"ok" if api_ok else "bad"}"></span>'
+        f'{"Online" if api_ok else "Offline"} · {html.escape(API_BASE)}</span>',
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown("")
+
+    if st.sidebar.button("New conversation", use_container_width=True, help="Clear this thread and start fresh"):
+        _new_conversation()
+        st.rerun()
+
+    st.sidebar.divider()
+    st.sidebar.markdown("**Teach your assistant**")
+    st.sidebar.caption("Upload PDFs — it will answer only from what you’ve indexed.")
+    uploaded = st.sidebar.file_uploader(
+        "PDF",
+        type=["pdf"],
+        label_visibility="collapsed",
+    )
+    if uploaded is not None and st.sidebar.button("Index this PDF", use_container_width=True, type="primary"):
+        with st.sidebar.status("Reading & embedding…", expanded=True) as status:
+            try:
+                data = upload_pdf(uploaded.getvalue(), uploaded.name)
+                n = data.get("chunks_indexed", 0)
+                status.update(label=f"Done — {n} chunks", state="complete")
+                st.session_state["last_index_count"] = n
+                st.session_state["last_index_name"] = uploaded.name
+                st.sidebar.success(f"**{uploaded.name}** is now part of your research memory.")
+            except httpx.HTTPStatusError as e:
+                status.update(label="Failed", state="error")
+                st.sidebar.error(e.response.text or str(e))
+            except Exception as e:
+                status.update(label="Failed", state="error")
+                st.sidebar.error(str(e))
+
+    if st.session_state.get("last_index_name"):
+        st.sidebar.info(
+            f"**In memory:** {st.session_state['last_index_name']} "
+            f"· {st.session_state.get('last_index_count', '?')} segments"
         )
 
-    for msg in st.session_state.messages:
-        safe = html.escape(msg["content"])
-        role = msg["role"]
-        label = "You" if role == "user" else "Assistant"
-        bubble_class = "user" if role == "user" else "assistant"
+    st.sidebar.divider()
+    st.sidebar.caption("RAG · ChromaDB · GPT-4o · Source-backed answers")
+
+    # —— Main: brand ——
+    st.markdown(
+        f'<span class="brand-badge">Private · Source-grounded</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(f'<h1 class="brand-title">{html.escape(PRODUCT_NAME)}</h1>', unsafe_allow_html=True)
+    st.markdown(f'<p class="brand-tagline">{html.escape(TAGLINE)}</p>', unsafe_allow_html=True)
+
+    # Thread header + refresh (always visible when there are messages or after first load)
+    col_a, col_b = st.columns([3, 1])
+    with col_a:
+        n_msgs = len(st.session_state.messages)
         st.markdown(
-            f'<div class="msg-row {role}">'
-            f'<div class="bubble {bubble_class}">'
-            f'<div class="bubble-label">{label}</div>{safe}'
-            f"</div></div>",
+            f'<div class="thread-header" style="border:none;padding:0;margin:12px 0 8px 0;">'
+            f'<span class="thread-title">Conversation</span>'
+            f'<span class="thread-meta">Thread #{st.session_state.thread_id} · '
+            f'{st.session_state.thread_started} · {n_msgs} messages</span></div>',
             unsafe_allow_html=True,
         )
+    with col_b:
+        if st.button("Refresh conversation", key="refresh_conv", use_container_width=True):
+            _new_conversation()
+            st.rerun()
 
-    prompt = st.chat_input("Message…")
+    # Conversation area (Streamlit blocks don’t nest HTML — shell is visual only via spacing)
+    has_indexed = bool(st.session_state.get("last_index_name"))
+    if not st.session_state.messages:
+        if has_indexed:
+            st.markdown(
+                """
+                <div class="welcome-bubble">
+                    <p><strong>Hi — I’m ready.</strong> I’ve read what you indexed. Ask me anything:
+                    summaries, definitions, comparisons, or “where does it say…?” — I’ll answer from
+                    your PDFs and you can open <strong>Sources</strong> below each reply to see the exact snippets.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div class="empty-state">
+                    <h3>Start by feeding me a PDF</h3>
+                    <p>Use the sidebar to upload and index a document.<br/>
+                    Then chat here — every answer stays tied to <strong>your</strong> sources.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            '<div style="height:1px;background:rgba(255,255,255,0.08);margin:8px 0 18px 0;"></div>',
+            unsafe_allow_html=True,
+        )
+        for msg in st.session_state.messages:
+            safe = html.escape(msg["content"])
+            role = msg["role"]
+            emoji = "●" if role == "user" else "◉"
+            bubble_class = "user" if role == "user" else "assistant"
+            label = "You" if role == "user" else PRODUCT_NAME.split()[0] + " Researcher"  # "Personal" -> use "Assistant"
+            if role == "assistant":
+                label = "Your researcher"
+            st.markdown(
+                f'<div class="msg-row {role}">'
+                f'<div class="avatar {role}">{emoji}</div>'
+                f'<div class="bubble-wrap"><div class="bubble {bubble_class}">'
+                f'<div class="bubble-label">{label}</div>{safe}</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+    prompt = st.chat_input("Ask your researcher…")
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.spinner("Retrieving & reasoning…"):
+        with st.spinner("Searching your documents and composing an answer…"):
             try:
                 result = query_api(prompt)
                 answer = result.get("answer", "")
                 st.session_state.last_sources = result.get("sources") or []
             except httpx.ConnectError:
                 answer = (
-                    f"Can't reach **{API_BASE}**. Start the API:\n\n"
-                    "`uvicorn app.main:app --reload --port 8050`"
+                    f"I can’t reach the API at `{API_BASE}`. Start the backend, then try again."
                 )
                 st.session_state.last_sources = []
             except httpx.HTTPStatusError as e:
@@ -428,10 +488,9 @@ def main() -> None:
         st.session_state.messages.append({"role": "assistant", "content": answer})
         st.rerun()
 
-    # Sources — collapsible stack
     if st.session_state.last_sources:
         with st.expander(
-            f"Sources · {len(st.session_state.last_sources)} snippets used",
+            f"Sources used in the last answer ({len(st.session_state.last_sources)} snippets)",
             expanded=False,
         ):
             for i, src in enumerate(st.session_state.last_sources, 1):
@@ -443,10 +502,9 @@ def main() -> None:
                 preview = content[:1000] + ("…" if len(content) > 1000 else "")
                 st.markdown(
                     f'<div class="source-card">'
-                    f'<div class="source-card-meta">Source {i}</div>'
+                    f'<div class="source-card-meta">Fragment {i}</div>'
                     f'<div class="source-card-meta">{html.escape(meta_str)}</div>'
-                    f'<div class="source-card-body">{html.escape(preview)}</div>'
-                    f"</div>",
+                    f'<div class="source-card-body">{html.escape(preview)}</div></div>',
                     unsafe_allow_html=True,
                 )
 
