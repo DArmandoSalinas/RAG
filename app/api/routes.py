@@ -54,8 +54,17 @@ async def upload_pdf(file: Annotated[UploadFile, File(description="PDF to index"
     if not chunks:
         raise HTTPException(status_code=422, detail="No text could be extracted from the PDF.")
 
-    manager = get_rag_manager()
-    ids = manager.add_documents(chunks)
+    try:
+        manager = get_rag_manager()
+        ids = manager.add_documents(chunks)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        # Chroma/OpenAI errors surface here — return message so UI is not opaque
+        raise HTTPException(
+            status_code=500,
+            detail=f"Indexing failed: {type(e).__name__}: {e}",
+        ) from e
 
     return {
         "filename": file.filename,

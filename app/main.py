@@ -7,15 +7,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Load .env FIRST — before any code that reads OPENAI_API_KEY.
+# override=True so values in .env replace anything already in the shell
+# (e.g. an old exported OPENAI_API_KEY=sk-your-key-here).
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_ENV_FILE = _PROJECT_ROOT / ".env"
+
 from dotenv import load_dotenv
+
+load_dotenv(_ENV_FILE, override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
-
-# Load .env from project root (parent of app/)
-_env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(_env_path)
 
 app = FastAPI(
     title="RAG Research Assistant",
