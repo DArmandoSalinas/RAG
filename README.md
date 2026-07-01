@@ -1,5 +1,7 @@
 # Personal Research Assistant (RAG)
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/) [![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688.svg)](https://fastapi.tiangolo.com/) [![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C.svg)](https://www.langchain.com/) [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991.svg)](https://openai.com/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A **source-grounded** research assistant: upload **PDFs**, index them locally, then **chat** with answers tied to **your documents** — with **visible snippets** for every reply.
 
 **Stack:** FastAPI · LangChain (MultiQueryRetriever) · ChromaDB · OpenAI (GPT-4o + `text-embedding-3-small`) · Streamlit · PyPDF.
